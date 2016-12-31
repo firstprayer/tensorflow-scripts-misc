@@ -3,3 +3,4 @@
 *.pyc
 checkpoint
 .DS_Store
+gan_model/
