@@ -26,14 +26,10 @@ IMAGE_HEIGHT = 28
 IMAGE_CHANNEL = 1
 IMAGE_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT * IMAGE_CHANNEL
 
+
 def sample_from_prior():
   return np.random.uniform(-1, 1, (FLAGS.batch_size, PRIOR_DIM))
 
-def GenerativeNet(prior):
-  h1 = Layer('h1').relu_hidden_layer(prior, 2000)
-  h2 = Layer('h2').relu_hidden_layer(h1, 1000)
-  X_gen = Layer('X_gen').sigmoid_hidden_layer(h2, IMAGE_SIZE)
-  return X_gen
 
 def GenerativeConvolutionNet(prior, is_train, reuse):
   with tf.variable_scope("Generative", reuse=reuse):
@@ -69,11 +65,6 @@ def GenerativeConvolutionNet(prior, is_train, reuse):
     network = tl.layers.BatchNormLayer(network, act=tf.nn.tanh, is_train=is_train, name='g/bn_after_deconv2')
     return network.outputs
 
-def DiscriminativeNet(X):
-  flat = tf.reshape(X, shape=(-1, IMAGE_HEIGHT * IMAGE_WIDTH * IMAGE_CHANNEL))
-  h1 = Layer('h1').relu_hidden_layer(flat, 1000)
-  h2 = Layer('h2').relu_hidden_layer(h1, 400)
-  return Layer('Y_pred').linear_layer(h2, 1)
 
 def DiscriminativeConvolutionNet(X, is_train, reuse):
   with tf.variable_scope("Discriminative", reuse=reuse):
