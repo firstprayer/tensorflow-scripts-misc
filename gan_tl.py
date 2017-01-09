@@ -138,7 +138,10 @@ def main():
       
       session.run(tf.global_variables_initializer())
       saver = tf.train.Saver()
-      for iter_idx in range(20000):
+      if FLAGS.start_iter > 0:
+          print('Restoring model from step %d' % FLAGS.start_iter)
+          saver.restore(session, os.path.join(FLAGS.save_dir, 'model.ckpt-%d' % FLAGS.start_iter))
+      for iter_idx in range(FLAGS.start_iter, FLAGS.stop_iter + 1):
         for _ in range(FLAGS.step_k):
           X_data = next_image_batch()
           prior_sample = sample_from_prior()
@@ -192,5 +195,17 @@ if __name__ == '__main__':
       default=1,
       help='Epoch for training D during 1 loop of G',
   ) 
+  parser.add_argument(
+    '--start_iter',
+    type=int,
+    default=0,
+    help='If non-zero, resume training from model saved at this iter',
+  )
+  parser.add_argument(
+    '--stop_iter',
+    type=int,
+    default=20000,
+    help='Stop training after this iter',
+  )
   FLAGS, _ = parser.parse_known_args()
   main()
