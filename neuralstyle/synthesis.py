@@ -8,6 +8,7 @@ import numpy as np
 import time
 import os
 from scipy import misc
+from vgg import vgg19
 
 FLAGS = None
 
@@ -19,32 +20,45 @@ def load_inception():
   t_input = tf.placeholder(np.float32, name='input', shape=[None, FLAGS.img_height, FLAGS.img_width, 3]) # define the input tensor
   imagenet_mean = 117.0
   t_preprocessed = t_input - imagenet_mean
-  # for node in graph_def.node:
-  #   if node.op != 'Const':
-  #     print(node.name, node.op) 
-  # print(graph_def)
   print(tf.import_graph_def(graph_def, {'input':t_preprocessed}))
   return t_preprocessed
 
 
 def load_vgg16():
+  model = vgg19.Vgg19(FLAGS.model_path)
   with open(FLAGS.model_path, 'rb') as f:
     graph_def = tf.GraphDef()
     s = f.read()
     graph_def.ParseFromString(s)
 
-  t_input = tf.placeholder(np.float32, name='input', shape=[None, 224, 224, 3]) # define the input tensor
+  t_input = tf.placeholder(np.float32, name='input',
+          shape=[None, FLAGS.img_height, FLAGS.img_width, 3]) # define the input tensor
+  imagenet_mean = 117.0
+  t_preprocessed = t_input - imagenet_mean
+  for node in graph_def.node:
+    if node.op != 'Const':
+      print(node.name, node.op) 
+  tf.import_graph_def(graph_def, {'input': t_preprocessed})
+  model.build(t_preprocessed)
+  return t_input
+
+def load_vgg19():
+  model = vgg19.Vgg19(FLAGS.model_path)
+  t_input = tf.placeholder(np.float32, name='input',
+          shape=[None, FLAGS.img_height, FLAGS.img_width, 3]) # define the input tensor
+  model.build(t_input)
+
+  graph_def = tf.get_default_graph().as_graph_def()
   # for node in graph_def.node:
   #   if node.op != 'Const':
   #     print(node.name, node.op) 
-  tf.import_graph_def(graph_def, {'input': t_input})
   return t_input
-  
 
 
 def T(graph, layer):
   '''Helper for getting layer output tensor'''
-  return graph.get_tensor_by_name("import/%s:0" % layer)
+  # return graph.get_tensor_by_name("import/%s:0" % layer)
+  return graph.get_tensor_by_name("%s:0" % layer)
 
 
 def main():
@@ -52,14 +66,11 @@ def main():
   with graph.as_default():
     session = tf.InteractiveSession(graph=graph)
     # Load pretrained model
-    X = load_inception()
-
-    # print(graph.get_all_collection_keys())
-    print(T(graph, 'conv2d0_w'))
-    # print(T(graph, 'mixed4d_3x3_bottleneck_pre_relu'))
+    # X = load_inception()
+    X = load_vgg19()
 
     content_image = misc.imread(FLAGS.content_image)
-    # content_image = misc.imresize(content_image, size=(224, 224, 3))
+    content_image = misc.imresize(content_image, size=(FLAGS.img_height, FLAGS.img_width, 3))
     content_image = np.expand_dims(content_image, 0)
 
     style_image = misc.imread(FLAGS.style_image)
@@ -67,13 +78,31 @@ def main():
     style_image = np.expand_dims(style_image, 0)
     
     style_layers = [
-      'conv2d0',
-      'conv2d1',
-      'conv2d2',
-      'maxpool1',
-      'maxpool4',
-      'maxpool10',
-      'avgpool0',
+      # VGG19 layers
+      'conv1_1/Relu',
+      'conv1_2/Relu',
+      'pool1',
+      'conv2_1/Relu',
+      'conv2_2/Relu',
+      'pool2',
+      'conv3_1/Relu',
+      'conv3_2/Relu',
+      'pool3',
+      'conv4_1/Relu',
+      'conv4_2/Relu',
+      'pool4',
+      'conv5_1/Relu',
+      'conv5_2/Relu',
+      'pool5',
+      
+      # Inception layers
+      # 'conv2d0',
+      # 'conv2d1',
+      # 'conv2d2',
+      # 'maxpool1',
+      # 'maxpool4',
+      # 'maxpool10',
+      # 'avgpool0',
     ]
     layer_style_loss_list = []
     for layer_name in style_layers:
@@ -89,10 +118,28 @@ def main():
       layer_style_loss_list.append(t_style_loss)
      
     content_layers = [
+      # VGG19
+      # 'conv1_1/Relu',
+      # 'conv1_2/Relu',
+      # 'pool1',
+      # 'conv2_1/Relu',
+      # 'conv2_2/Relu',
+      'pool2',
+      # 'conv3_1/Relu',
+      # 'conv3_2/Relu',
+      # 'pool3',
+      # 'conv4_1/Relu',
+      # 'conv4_2/Relu',
+      'pool4',
+      # 'conv5_1/Relu',
+      # 'conv5_2/Relu',
+      # 'pool5',
+
+      # Inception
       # 'conv2d0',
       # 'conv2d2',
       # 'maxpool1',
-      'maxpool4',
+      # 'maxpool4',
       # 'maxpool10',
       # 'avgpool0',
       # 'conv2d0',
@@ -108,11 +155,11 @@ def main():
       content_activation = session.run(t_layer, feed_dict={X: content_image})
       t_content_loss = tf.reduce_sum(tf.square(t_layer - content_activation))
 
-      for i in [3, 6]:  # 2, len(layer_style_loss_list)):
+      for i in [8]:  # 2, len(layer_style_loss_list)):
 
         t_total_loss = FLAGS.alpha * t_content_loss
         for t_style_loss in layer_style_loss_list[: i + 1]:
-            t_total_loss += (1 - FLAGS.alpha) * t_style_loss
+            t_total_loss += (1 - FLAGS.alpha) * t_style_loss / (i + 1)
   
         img_syn = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3)) + 100.0
         # opt = tf.train.GradientDescentOptimizer(learning_rate=FLAGS.step)
@@ -129,8 +176,10 @@ def main():
           grad, loss, content_loss = session.run([t_grad, t_total_loss, t_content_loss], feed_dict={X: img_syn})
           grad /= grad.std() + 1e-8
           img_syn -= grad * FLAGS.step
-          if k % 100 == 0 and k:
+          if k % 10 == 0 and k:
             print(k, loss, content_loss * FLAGS.alpha, content_loss)
+
+          if k % 50 == 0 and k:
             check_point(k, img_syn.squeeze())
 
 
