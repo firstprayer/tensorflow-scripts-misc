@@ -14,35 +14,6 @@ from vgg import vgg19
 FLAGS = None
 IMAGENET_MEAN = 117.0
 
-def load_inception():
-  with tf.gfile.FastGFile(FLAGS.model_path, 'rb') as f:
-    graph_def = tf.GraphDef()
-    graph_def.ParseFromString(f.read())
-
-  t_input = tf.placeholder(np.float32, name='input', shape=[None, FLAGS.img_height, FLAGS.img_width, 3]) # define the input tensor
-  imagenet_mean = 117.0
-  t_preprocessed = t_input - imagenet_mean
-  print(tf.import_graph_def(graph_def, {'input':t_preprocessed}))
-  return t_preprocessed
-
-
-def load_vgg16():
-  model = vgg19.Vgg19(FLAGS.model_path)
-  with open(FLAGS.model_path, 'rb') as f:
-    graph_def = tf.GraphDef()
-    s = f.read()
-    graph_def.ParseFromString(s)
-
-  t_input = tf.placeholder(np.float32, name='input',
-          shape=[None, FLAGS.img_height, FLAGS.img_width, 3]) # define the input tensor
-  imagenet_mean = 117.0
-  t_preprocessed = t_input - imagenet_mean
-  for node in graph_def.node:
-    if node.op != 'Const':
-      print(node.name, node.op) 
-  tf.import_graph_def(graph_def, {'input': t_preprocessed})
-  model.build(t_preprocessed)
-  return t_input
 
 def load_vgg19():
   model = vgg19.Vgg19(FLAGS.model_path)
@@ -54,14 +25,16 @@ def load_vgg19():
   model.build(t_input - IMAGENET_MEAN)
   return t_input
 
+
 def print_graph_node_names(graph):
+  '''For printing out graph structure'''
   for node in graph.as_graph_def().node:
     if node.op != 'Const':
       print(node.name, node.op) 
 
+
 def T(graph, layer):
   '''Helper for getting layer output tensor'''
-  # return graph.get_tensor_by_name("import/%s:0" % layer)
   return graph.get_tensor_by_name("%s:0" % layer)
 
 
@@ -79,9 +52,7 @@ def main():
   with graph.as_default():
     session = tf.InteractiveSession(graph=graph)
     # Load pretrained model
-    # X = load_inception()
     X = load_vgg19()
-    # print_graph_node_names(graph)
 
     content_image = imread(FLAGS.content_image)
     print(content_image.flatten()[: 20])
@@ -92,20 +63,10 @@ def main():
     style_layers = [
       # VGG19 layers
       'conv1_1/Relu',
-      # 'conv1_2/Relu',
-      # 'pool1',
       'conv2_1/Relu',
-      # 'conv2_2/Relu',
-      # 'pool2',
       'conv3_1/Relu',
-      # 'conv3_2/Relu',
-      # 'pool3',
       'conv4_1/Relu',
-      # 'conv4_2/Relu',
-      # 'pool4',
       'conv5_1/Relu',
-      # 'conv5_2/Relu',
-      # 'pool5',
     ]
     layer_style_loss_list = []
     session.run(tf.global_variables_initializer())
@@ -125,30 +86,15 @@ def main():
      
     content_layers = [
       # VGG19
-      # 'conv1_1/Relu',
-      # 'conv1_2/Relu',
-      'pool1',
-      # 'conv2_1/Relu',
-      # 'conv2_2/Relu',
-      # 'pool2',
-      # 'conv3_1/Relu',
-      # 'conv3_2/Relu',
-      # 'pool3',
-      # 'conv4_1/Relu',
-      # 'conv4_2/Relu',
-      # 'pool4',
-      # 'conv5_1/Relu',
-      # 'conv5_2/Relu',
-      # 'pool5',
+      'conv4_2/Relu',
     ]
     for layer_name in content_layers:
       print('=================Running layer', layer_name, 'as content layer')
       t_layer = T(graph, layer_name)
       session.run(X.assign(content_image))
-      content_activation = session.run(t_layer)  # , feed_dict={X: content_image})
+      content_activation = session.run(t_layer)
       t_content_loss = tf.reduce_sum(tf.square(t_layer - content_activation))
 
-      # for i in reversed([2, 5, 8, 11, 14]):  # 2, len(layer_style_loss_list)):
       for i in [4]: #reversed(range(5)): # reversed([1, 4, 7, 10, 13]):
         print('Running', style_layers[: i + 1], 'as style layers')
 
