@@ -149,7 +149,7 @@ def main():
       t_content_loss = tf.reduce_sum(tf.square(t_layer - content_activation))
 
       # for i in reversed([2, 5, 8, 11, 14]):  # 2, len(layer_style_loss_list)):
-      for i in [0]: # reversed(range(5)): # reversed([1, 4, 7, 10, 13]):
+      for i in [4]: #reversed(range(5)): # reversed([1, 4, 7, 10, 13]):
         print('Running', style_layers[: i + 1], 'as style layers')
 
         t_total_loss = FLAGS.alpha * t_content_loss
@@ -196,7 +196,7 @@ def main():
           # if k % 10 == 0 and k:
           print(k, loss, content_loss * FLAGS.alpha, content_loss)
 
-          if k % 5 == 0 and k:
+          if k % 10 == 0 and k:
             check_point(k)
 
 
