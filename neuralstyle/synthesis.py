@@ -44,16 +44,18 @@ def load_vgg16():
 
 def load_vgg19():
   model = vgg19.Vgg19(FLAGS.model_path)
-  t_input = tf.placeholder(np.float32, name='input',
-          shape=[None, FLAGS.img_height, FLAGS.img_width, 3]) # define the input tensor
-  model.build(t_input)
 
-  graph_def = tf.get_default_graph().as_graph_def()
-  # for node in graph_def.node:
-  #   if node.op != 'Const':
-  #     print(node.name, node.op) 
+  t_input = tf.get_variable(
+          name='input', \
+          shape=[1, FLAGS.img_height, FLAGS.img_width, 3], \
+          initializer=tf.random_normal_initializer())
+  model.build(t_input)
   return t_input
 
+def print_graph_node_names(graph):
+  for node in graph.as_graph_def().node:
+    if node.op != 'Const':
+      print(node.name, node.op) 
 
 def T(graph, layer):
   '''Helper for getting layer output tensor'''
@@ -150,37 +152,47 @@ def main():
       # 'conv2d2_pre_relu/conv',
     ]
     for layer_name in content_layers:
-      print('=================Running layer', layer_name)
+      print('=================Running layer', layer_name, 'as content layer')
       t_layer = T(graph, layer_name)
-      content_activation = session.run(t_layer, feed_dict={X: content_image})
+      session.run(X.assign(content_image))
+      content_activation = session.run(t_layer)  # , feed_dict={X: content_image})
       t_content_loss = tf.reduce_sum(tf.square(t_layer - content_activation))
 
       for i in [8]:  # 2, len(layer_style_loss_list)):
+        print('Running', style_layers[: i + 1], 'as style layers')
 
         t_total_loss = FLAGS.alpha * t_content_loss
         for t_style_loss in layer_style_loss_list[: i + 1]:
             t_total_loss += (1 - FLAGS.alpha) * t_style_loss / (i + 1)
   
+        grad_op = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate) \
+                          .minimize(t_total_loss, var_list=[X])
+        # Initialize variables needed by Adam
+        session.run(tf.global_variables_initializer())
         img_syn = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3)) + 100.0
-        # opt = tf.train.GradientDescentOptimizer(learning_rate=FLAGS.step)
+        session.run(X.assign(img_syn))
+
+        # grad_op = optimizer.minimize(t_total_loss, var_list=[X])
         # t_grads_and_vals = opt.compute_gradients(t_loss, [X])
-        t_grad = tf.gradients(t_total_loss, X)[0]
+        # t_grad = tf.gradients(t_total_loss, X)[0]
   
-        def check_point(num_iter, img):
-          # misc.imsave(FLAGS.output_dir + '/%s_syn_%d.jpg' % (layer_name.replace('/', '-'), num_iter), img)
+        def check_point(num_iter):
+          img = session.run(X).squeeze()
+          print(img.shape)
           misc.imsave(FLAGS.output_dir + '/%s_syn_%d(%d).jpg' % (layer_name.replace('/', '-'), num_iter, i), img)
   
         for k in range(FLAGS.iter_num + 1):
-          # grads_and_vals = session.run(t_grads_and_vals, feed_dict={X: img_syn})
+          _, loss, content_loss = session.run([grad_op, t_total_loss, t_content_loss]) 
+          # grads_and_vals = session.run(t_grads_and_vals)  #, feed_dict={X: img_syn})
           # print(grads_and_vals)
-          grad, loss, content_loss = session.run([t_grad, t_total_loss, t_content_loss], feed_dict={X: img_syn})
-          grad /= grad.std() + 1e-8
-          img_syn -= grad * FLAGS.step
-          if k % 10 == 0 and k:
-            print(k, loss, content_loss * FLAGS.alpha, content_loss)
+          # grad, loss, content_loss = session.run([t_grad, t_total_loss, t_content_loss], feed_dict={X: img_syn})
+          # grad /= grad.std() + 1e-8
+          # img_syn -= grad * FLAGS.step
+          # if k % 10 == 0 and k:
+          print(k, loss, content_loss * FLAGS.alpha, content_loss)
 
-          if k % 50 == 0 and k:
-            check_point(k, img_syn.squeeze())
+          if k % 5 == 0 and k:
+            check_point(k)
 
 
 if __name__ == '__main__':
@@ -204,7 +216,7 @@ if __name__ == '__main__':
       help='Path for style image',
   )
   parser.add_argument(
-      '--step',
+      '--learning_rate',
       type=float,
       default=1.0,
       help='Learning rate',
