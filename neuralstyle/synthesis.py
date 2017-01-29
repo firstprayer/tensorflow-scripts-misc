@@ -149,7 +149,7 @@ def main():
       t_content_loss = tf.reduce_sum(tf.square(t_layer - content_activation))
 
       # for i in reversed([2, 5, 8, 11, 14]):  # 2, len(layer_style_loss_list)):
-      for i in reversed(range(5)): # reversed([1, 4, 7, 10, 13]):
+      for i in [0]: # reversed(range(5)): # reversed([1, 4, 7, 10, 13]):
         print('Running', style_layers[: i + 1], 'as style layers')
 
         t_total_loss = FLAGS.alpha * t_content_loss
@@ -164,29 +164,29 @@ def main():
         def get_file_save_path(iter_num):
           return FLAGS.output_dir + '/%s_syn_%d(%d).jpg' \
                   % (layer_name.replace('/', '-'), iter_num, i)
+        
+        def get_model_save_path(iter_num=None):
+          path = FLAGS.save_dir + '/model-%s_syn(%d).cpkt' \
+                  % (layer_name.replace('/', '-'), i)
+          if iter_num is not None:
+            path += '-%d' % iter_num
+          return path
 
-        img_syn = None
+        saver = tf.train.Saver()
         if FLAGS.resume_iter > 0:
           saver.restore(
             session,
-            os.path.join(FLAGS.save_dir, 'model.ckpt-%d' % FLAGS.resume_iter))
-          resume_path = get_file_save_path(FLAGS.resume_iter)
-          if os.path.exists(resume_path):
-            print('Loading from %s' % resume_path)
-            img_syn = misc.imread(resume_path)
-            img_syn = img_syn.reshape([1, FLAGS.img_height, FLAGS.img_width, 3])
-          else:
-            print('Path %s not found. Fallback to random' % resume_path)
-        if img_syn is None:
-          img_syn = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3))
-        print(img_syn.flatten()[: 20])
-        session.run(X.assign(img_syn))
+            get_model_save_path(FLAGS.resume_iter))
+        else:
+          initial = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3))
+          session.run(X.assign(initial))
+        print(session.run(X).flatten()[: 20])
           
-        saver = tf.train.Saver()
         def check_point(num_iter):
           img = session.run(X).squeeze()
           print(img.flatten()[: 20])
           misc.imsave(get_file_save_path(num_iter), img)
+          saver.save(session, get_model_save_path(), global_step=num_iter)
 
         start_iter = 0
         if FLAGS.resume_iter > 0:
@@ -261,6 +261,12 @@ if __name__ == '__main__':
       type=str,
       default='syn_images',
       help='Output directory for images',
+  )
+  parser.add_argument(
+      '--save_dir',
+      type=str,
+      default='models',
+      help='Output directory for models',
   )
   FLAGS, _ = parser.parse_known_args()
   main()
