@@ -169,19 +169,34 @@ def main():
                           .minimize(t_total_loss, var_list=[X])
         # Initialize variables needed by Adam
         session.run(tf.global_variables_initializer())
-        img_syn = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3)) + 100.0
-        session.run(X.assign(img_syn))
 
         # grad_op = optimizer.minimize(t_total_loss, var_list=[X])
         # t_grads_and_vals = opt.compute_gradients(t_loss, [X])
         # t_grad = tf.gradients(t_total_loss, X)[0]
-  
+
+        def get_file_save_path(iter_num):
+          return FLAGS.output_dir + '/%s_syn_%d(%d).jpg' \
+                  % (layer_name.replace('/', '-'), iter_num, i)
+        img_syn = None
+        if FLAGS.resume_iter > 0:
+          resume_path = get_file_save_path(FLAGS.resume_iter)
+          if os.path.exists(resume_path):
+            print('Loading from %s' % resume_path)
+            img_syn = misc.imread(resume_path)
+            img_syn = img_syn.reshape([1, FLAGS.img_height, FLAGS.img_width, 3])
+          else:
+            print('Path %s not found. Fallback to random' % resume_path)
+        if img_syn is None:
+          img_syn = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3)) + 100.0
+        session.run(X.assign(img_syn))
+          
         def check_point(num_iter):
           img = session.run(X).squeeze()
-          print(img.shape)
-          misc.imsave(FLAGS.output_dir + '/%s_syn_%d(%d).jpg' % (layer_name.replace('/', '-'), num_iter, i), img)
-  
-        for k in range(FLAGS.iter_num + 1):
+          misc.imsave(get_file_save_path(num_iter), img)
+        start_iter = 0
+        if FLAGS.resume_iter > 0:
+          start_iter = FLAGS.resume_iter + 1
+        for k in range(start_iter, FLAGS.iter_num + 1):
           _, loss, content_loss = session.run([grad_op, t_total_loss, t_content_loss]) 
           # grads_and_vals = session.run(t_grads_and_vals)  #, feed_dict={X: img_syn})
           # print(grads_and_vals)
@@ -244,6 +259,12 @@ if __name__ == '__main__':
       type=int,
       default=224,
       help='Image height',
+  ) 
+  parser.add_argument(
+      '--resume_iter',
+      type=int,
+      default=0,
+      help='If positive, resume from previous training by loading previous result',
   ) 
   parser.add_argument(
       '--output_dir',
