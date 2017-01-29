@@ -7,10 +7,12 @@ import tensorflow as tf
 import numpy as np
 import time
 import os
+import scipy
 from scipy import misc
 from vgg import vgg19
 
 FLAGS = None
+IMAGENET_MEAN = 117.0
 
 def load_inception():
   with tf.gfile.FastGFile(FLAGS.model_path, 'rb') as f:
@@ -49,7 +51,7 @@ def load_vgg19():
           name='input', \
           shape=[1, FLAGS.img_height, FLAGS.img_width, 3], \
           initializer=tf.random_normal_initializer())
-  model.build(t_input)
+  model.build(t_input - IMAGENET_MEAN)
   return t_input
 
 def print_graph_node_names(graph):
@@ -63,6 +65,15 @@ def T(graph, layer):
   return graph.get_tensor_by_name("%s:0" % layer)
 
 
+def imread(path):
+  img = scipy.misc.imread(path).astype(np.float)
+  img = misc.imresize(img, size=(FLAGS.img_height, FLAGS.img_width, 3)).astype(np.float)
+  if len(img.shape) == 2:
+    img = np.dstack((img,img,img))
+  img = np.expand_dims(img, 0)
+  return img
+
+
 def main():
   graph = tf.Graph()
   with graph.as_default():
@@ -70,43 +81,35 @@ def main():
     # Load pretrained model
     # X = load_inception()
     X = load_vgg19()
+    # print_graph_node_names(graph)
 
-    content_image = misc.imread(FLAGS.content_image)
-    content_image = misc.imresize(content_image, size=(FLAGS.img_height, FLAGS.img_width, 3))
-    content_image = np.expand_dims(content_image, 0)
+    content_image = imread(FLAGS.content_image)
+    print(content_image.flatten()[: 20])
 
-    style_image = misc.imread(FLAGS.style_image)
-    style_image = misc.imresize(style_image, size=(FLAGS.img_height, FLAGS.img_width, 3))
-    style_image = np.expand_dims(style_image, 0)
+    style_image = imread(FLAGS.style_image)
+    print(style_image.flatten()[: 20])
     
     style_layers = [
       # VGG19 layers
       'conv1_1/Relu',
-      'conv1_2/Relu',
-      'pool1',
+      # 'conv1_2/Relu',
+      # 'pool1',
       'conv2_1/Relu',
-      'conv2_2/Relu',
-      'pool2',
+      # 'conv2_2/Relu',
+      # 'pool2',
       'conv3_1/Relu',
-      'conv3_2/Relu',
-      'pool3',
+      # 'conv3_2/Relu',
+      # 'pool3',
       'conv4_1/Relu',
-      'conv4_2/Relu',
-      'pool4',
+      # 'conv4_2/Relu',
+      # 'pool4',
       'conv5_1/Relu',
-      'conv5_2/Relu',
-      'pool5',
-      
-      # Inception layers
-      # 'conv2d0',
-      # 'conv2d1',
-      # 'conv2d2',
-      # 'maxpool1',
-      # 'maxpool4',
-      # 'maxpool10',
-      # 'avgpool0',
+      # 'conv5_2/Relu',
+      # 'pool5',
     ]
     layer_style_loss_list = []
+    session.run(tf.global_variables_initializer())
+    session.run(X.assign(style_image)) 
     for layer_name in style_layers:
       t_layer = T(graph, layer_name)
       t_layer_shape = t_layer.get_shape().as_list()
@@ -114,7 +117,8 @@ def main():
       t_layer_vectorized = tf.reshape(t_layer,
               shape=[feature_map_size, t_layer_shape[-1]])
       t_gram_mat = tf.matmul(t_layer_vectorized, t_layer_vectorized, transpose_a=True)
-      style_activation = session.run(t_gram_mat, feed_dict={X: style_image})
+      style_activation = session.run(t_gram_mat)
+      print(layer_name, style_activation.flatten()[: 20])
       t_style_loss = tf.reduce_mean(tf.square(t_gram_mat - style_activation)) \
               / (4 * feature_map_size * feature_map_size)
       layer_style_loss_list.append(t_style_loss)
@@ -123,33 +127,19 @@ def main():
       # VGG19
       # 'conv1_1/Relu',
       # 'conv1_2/Relu',
-      # 'pool1',
+      'pool1',
       # 'conv2_1/Relu',
       # 'conv2_2/Relu',
-      'pool2',
+      # 'pool2',
       # 'conv3_1/Relu',
       # 'conv3_2/Relu',
       # 'pool3',
       # 'conv4_1/Relu',
       # 'conv4_2/Relu',
-      'pool4',
+      # 'pool4',
       # 'conv5_1/Relu',
       # 'conv5_2/Relu',
       # 'pool5',
-
-      # Inception
-      # 'conv2d0',
-      # 'conv2d2',
-      # 'maxpool1',
-      # 'maxpool4',
-      # 'maxpool10',
-      # 'avgpool0',
-      # 'conv2d0',
-      # 'conv2d1',
-      # 'conv2d2',
-      # 'conv2d0_pre_relu/conv',
-      # 'conv2d1_pre_relu/conv',
-      # 'conv2d2_pre_relu/conv',
     ]
     for layer_name in content_layers:
       print('=================Running layer', layer_name, 'as content layer')
@@ -158,7 +148,8 @@ def main():
       content_activation = session.run(t_layer)  # , feed_dict={X: content_image})
       t_content_loss = tf.reduce_sum(tf.square(t_layer - content_activation))
 
-      for i in [8]:  # 2, len(layer_style_loss_list)):
+      # for i in reversed([2, 5, 8, 11, 14]):  # 2, len(layer_style_loss_list)):
+      for i in reversed(range(5)): # reversed([1, 4, 7, 10, 13]):
         print('Running', style_layers[: i + 1], 'as style layers')
 
         t_total_loss = FLAGS.alpha * t_content_loss
@@ -170,15 +161,15 @@ def main():
         # Initialize variables needed by Adam
         session.run(tf.global_variables_initializer())
 
-        # grad_op = optimizer.minimize(t_total_loss, var_list=[X])
-        # t_grads_and_vals = opt.compute_gradients(t_loss, [X])
-        # t_grad = tf.gradients(t_total_loss, X)[0]
-
         def get_file_save_path(iter_num):
           return FLAGS.output_dir + '/%s_syn_%d(%d).jpg' \
                   % (layer_name.replace('/', '-'), iter_num, i)
+
         img_syn = None
         if FLAGS.resume_iter > 0:
+          saver.restore(
+            session,
+            os.path.join(FLAGS.save_dir, 'model.ckpt-%d' % FLAGS.resume_iter))
           resume_path = get_file_save_path(FLAGS.resume_iter)
           if os.path.exists(resume_path):
             print('Loading from %s' % resume_path)
@@ -187,22 +178,21 @@ def main():
           else:
             print('Path %s not found. Fallback to random' % resume_path)
         if img_syn is None:
-          img_syn = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3)) + 100.0
+          img_syn = np.random.uniform(size=(1, FLAGS.img_height, FLAGS.img_width, 3))
+        print(img_syn.flatten()[: 20])
         session.run(X.assign(img_syn))
           
+        saver = tf.train.Saver()
         def check_point(num_iter):
           img = session.run(X).squeeze()
+          print(img.flatten()[: 20])
           misc.imsave(get_file_save_path(num_iter), img)
+
         start_iter = 0
         if FLAGS.resume_iter > 0:
           start_iter = FLAGS.resume_iter + 1
         for k in range(start_iter, FLAGS.iter_num + 1):
           _, loss, content_loss = session.run([grad_op, t_total_loss, t_content_loss]) 
-          # grads_and_vals = session.run(t_grads_and_vals)  #, feed_dict={X: img_syn})
-          # print(grads_and_vals)
-          # grad, loss, content_loss = session.run([t_grad, t_total_loss, t_content_loss], feed_dict={X: img_syn})
-          # grad /= grad.std() + 1e-8
-          # img_syn -= grad * FLAGS.step
           # if k % 10 == 0 and k:
           print(k, loss, content_loss * FLAGS.alpha, content_loss)
 
