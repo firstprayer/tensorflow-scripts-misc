@@ -1,2 +1,3 @@
 syn_images/
 models/
+*.mat
